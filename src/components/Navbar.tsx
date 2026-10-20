@@ -63,7 +63,9 @@ interface MenuTabItem {
 interface MenuGroup {
   id: string;
   labelBn: string;
+  shortLabelBn?: string;
   labelEn: string;
+  shortLabelEn?: string;
   icon: React.ComponentType<{ className?: string }>;
   tabs: MenuTabItem[];
 }
@@ -72,7 +74,9 @@ const ADOBE_MENU_GROUPS: MenuGroup[] = [
   {
     id: 'home',
     labelBn: 'হোম',
+    shortLabelBn: 'হোম',
     labelEn: 'Home',
+    shortLabelEn: 'Home',
     icon: Home,
     tabs: [
       { 
@@ -89,7 +93,9 @@ const ADOBE_MENU_GROUPS: MenuGroup[] = [
   {
     id: 'production',
     labelBn: 'প্রোডাকশন',
+    shortLabelBn: 'প্রোডাকশন',
     labelEn: 'Production',
+    shortLabelEn: 'Prod',
     icon: Scissors,
     tabs: [
       { 
@@ -115,7 +121,9 @@ const ADOBE_MENU_GROUPS: MenuGroup[] = [
   {
     id: 'hr',
     labelBn: 'হাজিরা ও ছুটি',
+    shortLabelBn: 'হাজিরা',
     labelEn: 'Attendance & Leave',
+    shortLabelEn: 'Attend',
     icon: Users,
     tabs: [
       { 
@@ -159,7 +167,9 @@ const ADOBE_MENU_GROUPS: MenuGroup[] = [
   {
     id: 'bills_and_requests',
     labelBn: 'বিল, খরচাদি ও রিকোয়েস্ট',
+    shortLabelBn: 'বিল ও খরচ',
     labelEn: 'Bills, Expenses & Requests',
+    shortLabelEn: 'Bills',
     icon: Package,
     tabs: [
       { 
@@ -202,7 +212,9 @@ const ADOBE_MENU_GROUPS: MenuGroup[] = [
   {
     id: 'admin',
     labelBn: 'অ্যাডমিন প্যানেল',
+    shortLabelBn: 'অ্যাডমিন',
     labelEn: 'Admin Panel',
+    shortLabelEn: 'Admin',
     icon: ShieldCheck,
     tabs: [
       { 
@@ -251,30 +263,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   const activeGroup = ADOBE_MENU_GROUPS.find(g => g.tabs.some(tab => tab.id === currentTab)) || ADOBE_MENU_GROUPS[0];
   const activeTabItem = activeGroup.tabs.find(tab => tab.id === currentTab);
 
-  // Adobe software behavior: Click outside closes menu; Escape key closes menu
+  // Close menu on Escape key
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (menuBarRef.current && !menuBarRef.current.contains(event.target as Node)) {
-        setOpenMenu(null);
-      }
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpenMenu(null);
       }
     };
-
-    document.addEventListener('pointerdown', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener('pointerdown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
-  // Adobe menu behavior: Click to open/toggle. If any menu is already open, hover switches menu seamlessly!
+  // Menu behavior: Click to open/toggle. If home is clicked, also switch to dashboard immediately!
   const handleMenuClick = (groupId: string) => {
+    if (groupId === 'home') {
+      onSelectTab('dashboard');
+    }
     setOpenMenu(prev => (prev === groupId ? null : groupId));
   };
 
@@ -478,67 +484,92 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
+      {/* Backdrop overlay for reliable outside click detection on all devices */}
+      {openMenu && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-2xs transition-opacity" 
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenMenu(null);
+          }}
+        />
+      )}
+
       {/* ========================================================
           LINE 2: ADOBE SOFTWARE STYLE LOCKED MENU BAR (TOOLS BAR)
+          - Responsive: Fits all 5 tabs on mobile screens
           - Locked right under header line, stays fixed on scroll
-          - Exact visual style from user image (pill-shaped menus with ⌵)
-          - Adobe-style hover switching & dropdown menu hierarchy
+          - Unclipped overflow so dropdowns always show cleanly
          ======================================================== */}
       <div 
         ref={menuBarRef} 
-        className={`border-t transition-colors ${
+        className={`border-t transition-colors relative z-50 ${
           darkMode ? 'bg-slate-950/90 border-slate-800' : 'bg-slate-100/90 border-slate-200'
         }`}
       >
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 py-1 flex items-center justify-between gap-1 overflow-visible">
-          {/* Horizontal Menu Items Bar (Fixed & Frozen, no scroll clipping) */}
-          <nav className="flex items-center gap-1 sm:gap-2 overflow-visible py-0.5 select-none">
-            {ADOBE_MENU_GROUPS.filter(group => {
-              if (group.id === 'bills_and_requests' && !canAccessPayroll && currentUser.accountType === 'employee') {
-                // Regular employees can still see requests and expenses
-                return true;
-              }
-              if (group.id === 'admin') return isBasicAdmin || isFullAdmin;
-              return true;
-            }).map((group, groupIdx) => {
+        <div className="max-w-7xl mx-auto px-1 sm:px-4 md:px-6 py-0.5 sm:py-1 flex items-center justify-between gap-1 overflow-visible relative">
+          {/* Horizontal Menu Items Bar */}
+          <nav className="flex items-center gap-0.5 sm:gap-1.5 md:gap-2 py-0.5 select-none w-full sm:w-auto justify-between sm:justify-start overflow-visible">
+            {ADOBE_MENU_GROUPS.map((group, groupIdx) => {
               const isGroupActive = group.tabs.some(tab => tab.id === currentTab);
               const isGroupOpen = openMenu === group.id;
               const hasBadge = group.id === 'bills_and_requests' && pendingRequestsCount > 0;
               const isRightAligned = groupIdx >= 3;
+              const isLockedAdmin = group.id === 'admin' && !isFullAdmin && !isAdminUnlocked;
 
               return (
                 <div key={group.id} className="relative shrink-0">
-                  {/* Menu Button matching image.png */}
+                  {/* Menu Button */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleMenuClick(group.id);
                     }}
-                    onMouseEnter={() => handleMenuMouseEnter(group.id)}
-                    className={`px-3 py-1.5 sm:px-3.5 sm:py-1.5 text-xs sm:text-sm font-bold rounded-xl whitespace-nowrap flex items-center gap-1.5 cursor-pointer transition select-none ${
+                    onMouseEnter={() => {
+                      handleMenuMouseEnter(group.id);
+                    }}
+                    className={`px-1.5 py-1.5 sm:px-2.5 sm:py-1.5 md:px-3.5 md:py-1.5 text-[10px] sm:text-xs md:text-sm font-bold rounded-lg sm:rounded-xl whitespace-nowrap flex items-center gap-1 sm:gap-1.5 cursor-pointer transition select-none active:scale-95 ${
                       isGroupActive
                         ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500/50'
                         : isGroupOpen
                           ? darkMode ? 'bg-slate-800 text-white ring-1 ring-slate-700' : 'bg-slate-200/90 text-slate-950 ring-1 ring-slate-300'
-                          : darkMode 
-                            ? 'text-slate-300 hover:text-white hover:bg-slate-800' 
-                            : 'text-slate-700 hover:text-slate-950 hover:bg-slate-200/70'
+                          : isLockedAdmin
+                            ? darkMode 
+                              ? 'text-amber-400/90 hover:text-amber-300 hover:bg-slate-800/80 ring-1 ring-amber-500/30' 
+                              : 'text-amber-800 hover:text-amber-950 hover:bg-amber-100/60 ring-1 ring-amber-300/60'
+                            : darkMode 
+                              ? 'text-slate-300 hover:text-white hover:bg-slate-800' 
+                              : 'text-slate-700 hover:text-slate-950 hover:bg-slate-200/70'
                     }`}
                   >
-                    <span>{isBn ? group.labelBn : group.labelEn}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isGroupOpen ? 'rotate-180 opacity-100' : 'opacity-70'}`} />
+                    {/* Compact label on mobile, full label on tablet/desktop */}
+                    <span className="sm:hidden">
+                      {isBn ? (group.shortLabelBn || group.labelBn) : (group.shortLabelEn || group.labelEn)}
+                    </span>
+                    <span className="hidden sm:inline">
+                      {isBn ? group.labelBn : group.labelEn}
+                    </span>
+
+                    {/* Lock Icon for Admin if locked */}
+                    {isLockedAdmin && (
+                      <span className="text-[10px] sm:text-xs leading-none shrink-0" title={isBn ? 'লকড অ্যাডমিন প্যানেল — আনলক করতে ট্যাপ করুন' : 'Locked Admin Panel — Tap to unlock'}>
+                        🔒
+                      </span>
+                    )}
+
+                    <ChevronDown className={`w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 transition-transform duration-200 shrink-0 ${isGroupOpen ? 'rotate-180 opacity-100' : 'opacity-70'}`} />
                     {hasBadge && (
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0"></span>
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500 animate-pulse shrink-0"></span>
                     )}
                   </button>
 
-                  {/* Adobe Dropdown Menu Overlay (High z-index, never clipped) */}
+                  {/* Adobe Dropdown Menu Overlay - Fixed on mobile, absolute on desktop */}
                   {isGroupOpen && (
                     <div 
                       onClick={(e) => e.stopPropagation()}
-                      className={`absolute top-full mt-1.5 w-72 sm:w-84 max-w-[calc(100vw-24px)] rounded-2xl border shadow-2xl z-[100] p-1.5 animate-in fade-in-50 zoom-in-95 duration-150 ${
-                        isRightAligned ? 'right-0' : 'left-0'
+                      className={`fixed left-2 right-2 top-[76px] sm:absolute sm:top-full sm:left-auto sm:right-auto sm:mt-1.5 sm:w-84 max-w-[calc(100vw-16px)] rounded-2xl border shadow-2xl z-[100] p-1.5 animate-in fade-in-50 zoom-in-95 duration-150 max-h-[75vh] overflow-y-auto ${
+                        isRightAligned ? 'sm:right-0' : 'sm:left-0'
                       } ${
                         darkMode 
                           ? 'bg-slate-900 border-slate-700 text-slate-100 shadow-black/80' 
@@ -552,43 +583,55 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </div>
 
                       {/* Dropdown Tab Items */}
-                      <div className="py-1 space-y-0.5">
+                      <div className="py-1 space-y-1">
                         {group.tabs.map(tab => {
                           const Icon = tab.icon;
                           const isCurrent = currentTab === tab.id;
                           const isRequisition = tab.id === 'product_requests';
+                          const isTabLocked = tab.id === 'admin_panel' && !isFullAdmin && !isAdminUnlocked;
 
                           return (
                             <button
                               key={tab.id}
                               type="button"
-                              onClick={() => handleSelectTab(tab.id)}
-                              className={`w-full px-3 py-2 text-left rounded-xl flex items-center justify-between gap-2.5 transition cursor-pointer select-none group ${
+                              onClick={() => {
+                                handleSelectTab(tab.id);
+                              }}
+                              className={`w-full px-3 py-2.5 text-left rounded-xl flex items-center justify-between gap-2.5 transition cursor-pointer select-none group active:scale-[0.98] ${
                                 isCurrent
                                   ? 'bg-indigo-600 text-white shadow-2xs font-extrabold'
                                   : darkMode
-                                    ? 'hover:bg-slate-800/90 text-slate-200'
-                                    : 'hover:bg-indigo-50/80 text-slate-800'
+                                    ? 'hover:bg-slate-800/90 text-slate-200 active:bg-slate-800'
+                                    : 'hover:bg-indigo-50/80 text-slate-800 active:bg-indigo-100'
                               }`}
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <span className={`p-1.5 rounded-lg shrink-0 ${
                                   isCurrent
                                     ? 'bg-white/20 text-white'
-                                    : darkMode
-                                      ? 'bg-slate-800 text-indigo-400 group-hover:scale-105 transition'
-                                      : 'bg-indigo-100/70 text-indigo-700 group-hover:scale-105 transition'
+                                    : isTabLocked
+                                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
+                                      : darkMode
+                                        ? 'bg-slate-800 text-indigo-400 group-hover:scale-105 transition'
+                                        : 'bg-indigo-100/70 text-indigo-700 group-hover:scale-105 transition'
                                 }`}>
                                   <Icon className="w-4 h-4" />
                                 </span>
                                 <div className="flex flex-col min-w-0 text-left">
-                                  <span className={`text-xs font-bold leading-tight truncate ${isCurrent ? 'text-white' : ''}`}>
-                                    {isBn ? tab.labelBn : tab.labelEn}
+                                  <span className={`text-xs font-bold leading-tight truncate flex items-center gap-1.5 ${isCurrent ? 'text-white' : ''}`}>
+                                    <span>{isBn ? tab.labelBn : tab.labelEn}</span>
+                                    {isTabLocked && (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold">
+                                        🔒 {isBn ? 'লকড' : 'Locked'}
+                                      </span>
+                                    )}
                                   </span>
                                   <span className={`text-[10px] leading-tight truncate ${
                                     isCurrent ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'
                                   }`}>
-                                    {isBn ? tab.subBn : tab.subEn}
+                                    {isTabLocked 
+                                      ? (isBn ? 'মাস্টার পাসওয়ার্ড দিয়ে আনলক করুন' : 'Unlock with admin master PIN')
+                                      : (isBn ? tab.subBn : tab.subEn)}
                                   </span>
                                 </div>
                               </div>
@@ -633,7 +676,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right indicator: Current Active Tab Badge */}
           {activeTabItem && (
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
               <span className="text-slate-900 dark:text-slate-200">{isBn ? activeTabItem.labelBn : activeTabItem.labelEn}</span>
             </div>
