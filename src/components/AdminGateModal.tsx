@@ -49,7 +49,9 @@ export const AdminGateModal: React.FC<AdminGateModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === masterPassword || password === MASTER_ADMIN_PASS) {
+    const trimmed = password.trim();
+    const activeMaster = (masterPassword || '').trim();
+    if (trimmed === activeMaster || trimmed === MASTER_ADMIN_PASS) {
       setError('');
       setPassword('');
       onSuccess();

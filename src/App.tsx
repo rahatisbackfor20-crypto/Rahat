@@ -115,19 +115,33 @@ export default function App() {
     }
   });
 
+  const [masterAdminPass, setMasterAdminPass] = useState<string>(() => {
+    return localStorage.getItem('caf_master_admin_pass') || MASTER_ADMIN_PASS;
+  });
+
+  const [masterAdminUsername, setMasterAdminUsername] = useState<string>(() => {
+    return localStorage.getItem('caf_master_admin_username') || 'admin';
+  });
+
   const [users, setUsers] = useState<User[]>(() => {
     try {
+      const savedPass = localStorage.getItem('caf_master_admin_pass') || MASTER_ADMIN_PASS;
+      const savedUser = localStorage.getItem('caf_master_admin_username') || 'admin';
       const saved = localStorage.getItem('caf_users');
       if (saved) {
         const parsed: User[] = JSON.parse(saved);
         return parsed.map(u => {
-          if (u.accountType === 'hosting' && (u.username === 'Robiulawal0209@' || u.password === 'Robiulawal0209@')) {
-            return { ...u, username: 'admin', password: MASTER_ADMIN_PASS };
+          if (u.accountType === 'hosting') {
+            return {
+              ...u,
+              username: savedUser || u.username || 'admin',
+              password: savedPass || u.password || MASTER_ADMIN_PASS
+            };
           }
           return u;
         });
       }
-      return INITIAL_USERS;
+      return INITIAL_USERS.map(u => u.accountType === 'hosting' ? { ...u, username: savedUser, password: savedPass } : u);
     } catch {
       return INITIAL_USERS;
     }
@@ -439,6 +453,8 @@ export default function App() {
     sections: string[];
     payrollStatusMap: PayrollStatusMap;
     cloudDbUrl: string;
+    masterAdminPass: string;
+    masterAdminUsername: string;
   }> = {}) => {
     const base = normalizeFirebaseUrl(nextState.cloudDbUrl !== undefined ? nextState.cloudDbUrl : cloudDbUrl);
     if (!base) return;
@@ -468,6 +484,8 @@ export default function App() {
         dutySettings: nextState.dutySettings || cloud?.dutySettings || dutySettings,
         sections: nextState.sections !== undefined ? nextState.sections : (Array.isArray(sections) && sections.length > 0 ? sections : (Array.isArray(cloud?.sections) ? cloud.sections : [])),
         payrollStatusMap: nextState.payrollStatusMap || cloud?.payrollStatusMap || payrollStatusMap,
+        masterAdminPass: nextState.masterAdminPass || cloud?.masterAdminPass || masterAdminPass,
+        masterAdminUsername: nextState.masterAdminUsername || cloud?.masterAdminUsername || masterAdminUsername,
         updatedAt: new Date().toISOString()
       };
 
@@ -532,6 +550,14 @@ export default function App() {
         if (data.dutySettings) setDutySettings(data.dutySettings);
         if (Array.isArray(data.sections)) setSections(data.sections);
         if (data.payrollStatusMap) setPayrollStatusMap(data.payrollStatusMap);
+        if (data.masterAdminPass) {
+          setMasterAdminPass(data.masterAdminPass);
+          localStorage.setItem('caf_master_admin_pass', data.masterAdminPass);
+        }
+        if (data.masterAdminUsername) {
+          setMasterAdminUsername(data.masterAdminUsername);
+          localStorage.setItem('caf_master_admin_username', data.masterAdminUsername);
+        }
         setSyncStatus('online');
         return data;
       } else {
@@ -575,7 +601,9 @@ export default function App() {
           data.payments,
           data.dutySettings,
           data.sections,
-          data.payrollStatusMap
+          data.payrollStatusMap,
+          data.masterAdminPass,
+          data.masterAdminUsername
         ]);
 
         if (snap === lastSnap.current) {
@@ -601,6 +629,14 @@ export default function App() {
         if (data.dutySettings) setDutySettings(data.dutySettings);
         if (Array.isArray(data.sections)) setSections(data.sections);
         if (data.payrollStatusMap) setPayrollStatusMap(data.payrollStatusMap);
+        if (data.masterAdminPass) {
+          setMasterAdminPass(data.masterAdminPass);
+          localStorage.setItem('caf_master_admin_pass', data.masterAdminPass);
+        }
+        if (data.masterAdminUsername) {
+          setMasterAdminUsername(data.masterAdminUsername);
+          localStorage.setItem('caf_master_admin_username', data.masterAdminUsername);
+        }
         setSyncStatus('online');
       } catch {
         setSyncStatus('offline');
@@ -617,9 +653,20 @@ export default function App() {
     const trimmedUser = username.trim();
     const trimmedPass = pass.trim();
 
-    // Check master admin password
-    if ((trimmedUser === MASTER_ADMIN_PASS || trimmedUser.toLowerCase() === 'admin') && trimmedPass === MASTER_ADMIN_PASS) {
-      const hostingUser = users.find(u => u.accountType === 'hosting') || users[0];
+    const hostingUser = users.find(u => u.accountType === 'hosting') || users[0];
+    const currentAdminUser = (hostingUser.username || masterAdminUsername || localStorage.getItem('caf_master_admin_username') || 'admin').trim().toLowerCase();
+    const currentAdminPass = (hostingUser.password || masterAdminPass || localStorage.getItem('caf_master_admin_pass') || MASTER_ADMIN_PASS).trim();
+
+    // Check master admin password or hosting admin credentials
+    const matchesUser = trimmedUser.toLowerCase() === currentAdminUser || 
+      trimmedUser === currentAdminPass || 
+      trimmedUser === MASTER_ADMIN_PASS || 
+      (currentAdminUser === 'admin' && trimmedUser.toLowerCase() === 'admin');
+    const matchesPass = trimmedPass === currentAdminPass || 
+      trimmedPass === masterAdminPass || 
+      trimmedPass === MASTER_ADMIN_PASS;
+
+    if (matchesUser && matchesPass) {
       if (hostingUser.accountStatus && hostingUser.accountStatus !== 'Active') {
         return { 
           success: false, 
@@ -1050,6 +1097,29 @@ export default function App() {
     }
   };
 
+  const handleUpdateAdminCredentials = async (newUsername: string, newPass: string) => {
+    const cleanUser = newUsername.trim() || 'admin';
+    const cleanPass = newPass.trim() || MASTER_ADMIN_PASS;
+    const hostingUser = users.find(u => u.accountType === 'hosting') || users[0];
+    const updatedUser: User = {
+      ...hostingUser,
+      username: cleanUser,
+      password: cleanPass
+    };
+    const nextList = users.map(u => u.id === updatedUser.id ? updatedUser : u);
+    setUsers(nextList);
+    setMasterAdminPass(cleanPass);
+    setMasterAdminUsername(cleanUser);
+    localStorage.setItem('caf_master_admin_pass', cleanPass);
+    localStorage.setItem('caf_master_admin_username', cleanUser);
+    localStorage.setItem('caf_users', JSON.stringify(nextList));
+    await pushToCloud({ users: nextList, masterAdminPass: cleanPass, masterAdminUsername: cleanUser });
+    if (currentUser && (currentUser.accountType === 'hosting' || currentUser.id === updatedUser.id)) {
+      setCurrentUser(updatedUser);
+      saveAuthSession(updatedUser);
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     const nextList = users.filter(u => u.id !== userId);
     setUsers(nextList);
@@ -1159,6 +1229,7 @@ export default function App() {
 
         <AdminGateModal
           isOpen={adminGateModalOpen}
+          masterPassword={masterAdminPass}
           onClose={() => setAdminGateModalOpen(false)}
           onSuccess={() => {
             setIsAdminUnlocked(true);
@@ -1444,6 +1515,9 @@ export default function App() {
             onAddProduction={handleAddProduction}
             onUpdateProduction={handleUpdateProduction}
             onDeleteProduction={handleDeleteProduction}
+            masterPassword={masterAdminPass}
+            masterUsername={masterAdminUsername}
+            onUpdateAdminCredentials={handleUpdateAdminCredentials}
           />
         )}
 
@@ -1507,6 +1581,7 @@ export default function App() {
 
       <AdminGateModal
         isOpen={adminGateModalOpen}
+        masterPassword={masterAdminPass}
         onClose={() => setAdminGateModalOpen(false)}
         onSuccess={() => {
           setIsAdminUnlocked(true);

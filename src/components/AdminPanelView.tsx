@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   User, 
   CompanyProfile, 
@@ -51,7 +51,11 @@ import {
   ClipboardCheck,
   Building2,
   MapPin,
-  Phone
+  Phone,
+  Eye,
+  EyeOff,
+  Lock,
+  Key
 } from 'lucide-react';
 
 interface AdminPanelViewProps {
@@ -86,6 +90,9 @@ interface AdminPanelViewProps {
   onAddProduction: (prod: Omit<ProductionRecord, 'id'>) => void;
   onUpdateProduction: (prod: ProductionRecord) => void;
   onDeleteProduction: (id: string) => void;
+  masterPassword?: string;
+  masterUsername?: string;
+  onUpdateAdminCredentials?: (newUsername: string, newPassword: string) => Promise<void> | void;
 }
 
 export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
@@ -119,7 +126,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   onOpenGmailModal,
   onAddProduction,
   onUpdateProduction,
-  onDeleteProduction
+  onDeleteProduction,
+  masterPassword = 'admin1234',
+  masterUsername = 'admin',
+  onUpdateAdminCredentials
 }) => {
   const t = translations[language];
   const isBn = language === 'bn';
@@ -127,7 +137,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const isFullControl = !currentUser || currentUser.accountType === 'hosting' || currentUser.accountType === 'admin' || currentUser.adminAccess === 'full';
   const isBasicAccess = isFullControl || currentUser?.adminAccess === 'basic' || currentUser?.accountType === 'md' || currentUser?.accountType === 'staff';
 
-  type AdminTab = 'accounts' | 'approvals' | 'orders' | 'sections' | 'audit' | 'holidays' | 'company_profile';
+  type AdminTab = 'accounts' | 'approvals' | 'orders' | 'sections' | 'audit' | 'holidays' | 'company_profile' | 'security_settings';
   const [activeTab, setActiveTab] = useState<AdminTab>('accounts');
   const [accessFilter, setAccessFilter] = useState<'all' | 'full' | 'basic' | 'none'>('all');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -511,6 +521,23 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const [dutyEnd, setDutyEnd] = useState(dutySettings?.endTime || dutySettings?.endHour || '17:00');
   const [dutyLunch, setDutyLunch] = useState<number>(dutySettings?.lunchBreakHours ?? 1);
 
+  // Admin Credentials & Master Password Settings state
+  const hostingUser = users.find(u => u.accountType === 'hosting') || users[0];
+  const activeMasterUsername = hostingUser?.username || masterUsername || 'admin';
+  const activeMasterPassword = masterPassword || hostingUser?.password || 'admin1234';
+
+  const [adminUsernameInput, setAdminUsernameInput] = useState(activeMasterUsername);
+  const [adminNewPasswordInput, setAdminNewPasswordInput] = useState('');
+  const [adminConfirmPasswordInput, setAdminConfirmPasswordInput] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [adminCredMsg, setAdminCredMsg] = useState<{ type: 'success' | 'error' | ''; text: string }>({ type: '', text: '' });
+  const [isUpdatingCreds, setIsUpdatingCreds] = useState(false);
+
+  useEffect(() => {
+    setAdminUsernameInput(activeMasterUsername);
+  }, [activeMasterUsername]);
+
   const triggerToast = (msg: string) => {
     setSaveToast(msg);
     setTimeout(() => setSaveToast(''), 3000);
@@ -754,6 +781,237 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const cardBg = darkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900';
   const inputBg = darkMode ? 'bg-slate-950 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900';
 
+  const renderAdminCredentialsSection = () => (
+    <div className="p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/30 dark:from-indigo-950/30 dark:via-slate-900 dark:to-purple-950/20 space-y-4 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3 border-indigo-100 dark:border-indigo-900/40">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <span>{isBn ? '🔐 অ্যাডমিন ইউজারনেম ও সিকিউরিটি পাসওয়ার্ড সেটিংস' : '🔐 Admin Username & Security Password Settings'}</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
+                Master Security
+              </span>
+            </h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {isBn 
+                ? 'মাস্টার অ্যাডমিন অ্যাকাউন্ট এবং অ্যাডমিন গেট আনলক করার ইউজারনেম ও পাসওয়ার্ড এখানে ম্যানুয়ালি পরিবর্তন করতে পারবেন।' 
+                : 'Manually configure master admin credentials and gate security unlock password.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Current Active Credentials Banner */}
+      <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-xs space-y-2">
+        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 block">
+          {isBn ? 'বর্তমান সক্রিয় অ্যাডমিন তথ্য (Current Active Credentials):' : 'Current Active Credentials:'}
+        </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <span className="text-slate-500 text-[11px] font-medium">{isBn ? 'ইউজারনেম (Username):' : 'Username:'}</span>
+            <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800">
+              {activeMasterUsername}
+            </span>
+          </div>
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <span className="text-slate-500 text-[11px] font-medium">{isBn ? 'পাসওয়ার্ড (Password):' : 'Password:'}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                {showCurrentPassword ? activeMasterPassword : '••••••••'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition cursor-pointer"
+                title={showCurrentPassword ? (isBn ? 'পাসওয়ার্ড লুকান' : 'Hide password') : (isBn ? 'পাসওয়ার্ড দেখুন' : 'Show password')}
+              >
+                {showCurrentPassword ? <EyeOff className="w-4 h-4 text-indigo-600" /> : <Eye className="w-4 h-4 text-slate-500" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Update Form */}
+      <div className="space-y-3 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Username Input */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Key className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{isBn ? 'নতুন অ্যাডমিন ইউজারনেম:' : 'Admin Username:'}</span>
+            </label>
+            <input
+              type="text"
+              value={adminUsernameInput}
+              onChange={(e) => setAdminUsernameInput(e.target.value)}
+              placeholder="e.g. admin"
+              className={`w-full p-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none focus:border-indigo-600 ${inputBg}`}
+            />
+            <span className="text-[10px] text-slate-400 mt-0.5 block">
+              {isBn ? 'লগইন করার জন্য ব্যবহার হবে' : 'Used for master admin login'}
+            </span>
+          </div>
+
+          {/* New Password Input */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Lock className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{isBn ? 'নতুন পাসওয়ার্ড (New Password):' : 'New Password:'}</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showAdminPassword ? 'text' : 'password'}
+                value={adminNewPasswordInput}
+                onChange={(e) => setAdminNewPasswordInput(e.target.value)}
+                placeholder={isBn ? 'কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড' : 'Min 4 characters'}
+                className={`w-full p-2.5 pr-8 rounded-xl border text-xs font-mono font-bold focus:outline-none focus:border-indigo-600 ${inputBg}`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminPassword(!showAdminPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                {showAdminPassword ? <EyeOff className="w-4 h-4 text-indigo-600" /> : <Eye className="w-4 h-4 text-slate-500" />}
+              </button>
+            </div>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">
+              {isBn ? 'পরিবর্তন না করতে চাইলে ফাঁকা রাখুন' : 'Leave blank to keep current'}
+            </span>
+          </div>
+
+          {/* Confirm Password Input */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Check className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{isBn ? 'পাসওয়ার্ড নিশ্চিতকরণ (Confirm):' : 'Confirm Password:'}</span>
+            </label>
+            <input
+              type={showAdminPassword ? 'text' : 'password'}
+              value={adminConfirmPasswordInput}
+              onChange={(e) => setAdminConfirmPasswordInput(e.target.value)}
+              placeholder={isBn ? 'নতুন পাসওয়ার্ড পুনরায় লিখুন' : 'Re-enter new password'}
+              className={`w-full p-2.5 rounded-xl border text-xs font-mono font-bold focus:outline-none focus:border-indigo-600 ${inputBg}`}
+            />
+            <span className="text-[10px] text-slate-400 mt-0.5 block">
+              {isBn ? 'পাসওয়ার্ডের সাথে মিলিয়ে লিখুন' : 'Must match new password'}
+            </span>
+          </div>
+        </div>
+
+        {/* Status Message */}
+        {adminCredMsg.text && (
+          <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+            adminCredMsg.type === 'success' 
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200' 
+              : 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+          }`}>
+            {adminCredMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />}
+            <span className="font-semibold">{adminCredMsg.text}</span>
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <button
+            type="button"
+            disabled={isUpdatingCreds}
+            onClick={async () => {
+              setAdminCredMsg({ type: '', text: '' });
+              const userVal = adminUsernameInput.trim();
+              const passVal = adminNewPasswordInput.trim();
+              const confirmVal = adminConfirmPasswordInput.trim();
+
+              if (!userVal) {
+                setAdminCredMsg({
+                  type: 'error',
+                  text: isBn ? 'ইউজারনেম খালি রাখা যাবে না।' : 'Username cannot be empty.'
+                });
+                return;
+              }
+
+              if (passVal) {
+                if (passVal.length < 4) {
+                  setAdminCredMsg({
+                    type: 'error',
+                    text: isBn ? 'পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে।' : 'Password must be at least 4 characters.'
+                  });
+                  return;
+                }
+                if (passVal !== confirmVal) {
+                  setAdminCredMsg({
+                    type: 'error',
+                    text: isBn ? 'নতুন পাসওয়ার্ড এবং কনফার্ম পাসওয়ার্ড মিলছে না।' : 'Password and confirm password do not match.'
+                  });
+                  return;
+                }
+              }
+
+              const targetPass = passVal || activeMasterPassword;
+
+              setIsUpdatingCreds(true);
+              try {
+                if (onUpdateAdminCredentials) {
+                  await onUpdateAdminCredentials(userVal, targetPass);
+                }
+                setAdminNewPasswordInput('');
+                setAdminConfirmPasswordInput('');
+                setAdminCredMsg({
+                  type: 'success',
+                  text: isBn 
+                    ? `অ্যাডমিন একাউন্ট সফলভাবে সংরক্ষিত হয়েছে! ইউজারনেম: "${userVal}", নতুন পাসওয়ার্ড সক্রিয় রয়েছে।` 
+                    : `Admin credentials saved successfully! Username: "${userVal}".`
+                });
+                triggerToast(isBn ? 'অ্যাডমিন ইউজারনেম ও পাসওয়ার্ড সফলভাবে সংরক্ষিত হয়েছে!' : 'Admin username & password saved successfully!');
+              } catch (err) {
+                setAdminCredMsg({
+                  type: 'error',
+                  text: isBn ? 'সংরক্ষণে ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।' : 'Failed to save credentials. Please try again.'
+                });
+              } finally {
+                setIsUpdatingCreds(false);
+              }
+            }}
+            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-black cursor-pointer shadow-md transition active:scale-98 flex items-center gap-2"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>
+              {isUpdatingCreds 
+                ? (isBn ? 'সংরক্ষণ হচ্ছে...' : 'Saving...') 
+                : (isBn ? '💾 পাসওয়ার্ড ও ইউজারনেম সংরক্ষণ করুন' : '💾 Save Admin Username & Password')}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              if (window.confirm(isBn ? 'আপনি কি নিশ্চিত ডিফল্ট ইউজারনেম (admin) এবং পাসওয়ার্ড (admin1234) এ ফিরিয়ে নিতে চান?' : 'Reset credentials to default (admin / admin1234)?')) {
+                setAdminUsernameInput('admin');
+                setAdminNewPasswordInput('');
+                setAdminConfirmPasswordInput('');
+                if (onUpdateAdminCredentials) {
+                  await onUpdateAdminCredentials('admin', 'admin1234');
+                }
+                setAdminCredMsg({
+                  type: 'success',
+                  text: isBn ? 'ডিফল্ট ইউজারনেম (admin) ও পাসওয়ার্ড (admin1234) সেট করা হয়েছে।' : 'Reset to default admin / admin1234 successfully.'
+                });
+                triggerToast(isBn ? 'ডিফল্ট পাসওয়ার্ড রিসেট সফল হয়েছে!' : 'Reset to default credentials successful!');
+              }
+            }}
+            className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold cursor-pointer transition flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>{isBn ? 'ডিফল্ট রিসেট (admin / admin1234)' : 'Reset Default'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
@@ -809,11 +1067,11 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
 
             <button
               onClick={() => setSettingsModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-2 cursor-pointer transition shadow-xs shrink-0"
-              title="Secure System & Cloud Configuration"
+              className="px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center gap-2 cursor-pointer transition shadow-xs shrink-0"
+              title={isBn ? 'সিস্টেম সেটিংস ও অ্যাডমিন পাসওয়ার্ড পরিবর্তন' : 'System Settings & Change Admin Password'}
             >
-              <Settings className="w-4 h-4 text-slate-500" />
-              <span>{isBn ? '⚙️ সেটিংস' : '⚙️ Settings'}</span>
+              <Settings className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>{isBn ? '⚙️ সেটিংস ও পাসওয়ার্ড' : '⚙️ Settings & Password'}</span>
             </button>
 
             {activeTab === 'accounts' && (
@@ -956,6 +1214,23 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
           >
             <Calendar className="w-4 h-4 text-amber-400" />
             <span>{isBn ? 'ছুটির ক্যালেন্ডার ও গুগল সিঙ্ক' : 'Holiday Calendar & Google Cal'}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('security_settings')}
+            className={`px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 transition cursor-pointer shrink-0 whitespace-nowrap ${
+              activeTab === 'security_settings'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Lock className="w-4 h-4 text-indigo-400" />
+            <span>{isBn ? '⚙️ সেটিংস ও অ্যাডমিন পাসওয়ার্ড' : '⚙️ Settings & Password'}</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              activeTab === 'security_settings' ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300'
+            }`}>
+              Admin
+            </span>
           </button>
         </div>
       </div>
@@ -1930,6 +2205,17 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                         >
                           {t.edit}
                         </button>
+                        {u.accountType === 'hosting' && (
+                          <button
+                            type="button"
+                            onClick={() => setSettingsModalOpen(true)}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-xs"
+                            title={isBn ? 'অ্যাডমিন ইউজারনেম ও পাসওয়ার্ড পরিবর্তন' : 'Change Admin Username & Password'}
+                          >
+                            <Key className="w-3 h-3" />
+                            <span>{isBn ? 'পাসওয়ার্ড' : 'Pass'}</span>
+                          </button>
+                        )}
                         {u.accountType !== 'hosting' && onDeleteUser && (
                           <button
                             type="button"
@@ -2274,6 +2560,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 </span>
               </div>
             </div>
+
+            {/* Admin Credentials & Master Password Settings Card */}
+            {renderAdminCredentialsSection()}
 
             {/* Company Name & Factory Address Management Card */}
             <div className="p-5 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-4">
@@ -3217,6 +3506,144 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
               >
                 <Check className="w-5 h-5" />
                 <span>{isBn ? '✓ কোম্পানি তথ্য ও ঠিকানা সম্পূর্ণ সংরক্ষণ করুন' : '✓ Save All Company Information'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Security & System Settings Dedicated Tab */}
+      {activeTab === 'security_settings' && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className={`border rounded-3xl p-6 space-y-2 shadow-xs ${cardBg}`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5 text-indigo-600 dark:text-indigo-400 font-bold text-sm tracking-tight">
+                <Settings className="w-5 h-5" />
+                <span className="text-base text-slate-900 dark:text-white font-extrabold">
+                  {isBn ? 'সিস্টেম সেটিংস ও অ্যাডমিন সিকিউরিটি কনসোল' : 'System & Admin Security Console'}
+                </span>
+              </div>
+              <span className="px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 text-xs font-bold font-mono">
+                Admin Panel Settings
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              {isBn 
+                ? 'মাস্টার অ্যাডমিন অ্যাকাউন্ট ইউজারনেম, সিকিউরিটি পাসওয়ার্ড এবং সিস্টেমের গুরুত্বপূর্ণ সেটিংস এখান থেকে সরাসরি পরিবর্তন ও নিয়ন্ত্রণ করতে পারবেন।' 
+                : 'Configure master admin credentials, system security passwords, and factory configuration.'}
+            </p>
+          </div>
+
+          {/* 1. Admin Credentials & Master Password Settings Card */}
+          {renderAdminCredentialsSection()}
+
+          {/* 2. Fast Navigation to Other System Settings */}
+          <div className={`border rounded-3xl p-6 space-y-4 shadow-xs ${cardBg}`}>
+            <div className="border-b pb-3 border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-500" />
+                <span>{isBn ? 'অন্যান্য সিস্টেম কনফিগারেশন' : 'Other System Configurations'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSettingsModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>{isBn ? 'পূর্ণাঙ্গ সেটিংস পপআপ খুলুন' : 'Open Full Settings Modal'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab('company_profile')}
+                className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-slate-800/40 text-left transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                    🏢
+                  </div>
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-200 group-hover:text-indigo-600">
+                    {isBn ? 'কোম্পানি নাম ও ঠিকানা' : 'Company Name & Address'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {isBn ? 'কারখানা নাম, অফিস ঠিকানা ও ব্যানার পরিবর্তন' : 'Edit factory name, address, and banner'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSettingsModalOpen(true)}
+                className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-slate-800/40 text-left transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                    📢
+                  </div>
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-200 group-hover:text-indigo-600">
+                    {isBn ? 'নোটিশ বোর্ড ও কর্মী মেনশন' : 'Notice Board & Mentions'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {isBn ? 'ফ্যাক্টরি নোটিশ প্রকাশ ও কর্মী মেনশন নোটিফিকেশন' : 'Broadcast announcements to factory staff'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSettingsModalOpen(true)}
+                className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-slate-800/40 text-left transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                    ⏰
+                  </div>
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-200 group-hover:text-indigo-600">
+                    {isBn ? 'ডিউটি ও কাজের সময়সূচী' : 'Duty Hours & Schedule'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {isBn ? 'স্ট্যান্ডার্ড ইন-আউট টাইম ও লাঞ্চ বিরতি' : 'Standard in/out times and lunch break'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('holidays')}
+                className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-slate-800/40 text-left transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
+                    📅
+                  </div>
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-200 group-hover:text-indigo-600">
+                    {isBn ? 'ছুটির ক্যালেন্ডার' : 'Holiday Calendar'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {isBn ? 'সরকারি ও কারখানা ছুটির দিন এবং গুগল ক্যালেন্ডার সিঙ্ক' : 'Government & factory holidays and Google sync'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSettingsModalOpen(true)}
+                className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-slate-800/40 text-left transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+                    ☁️
+                  </div>
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-200 group-hover:text-indigo-600">
+                    {isBn ? 'ফায়ারবেস ক্লাউড ডাটাবেস' : 'Firebase Cloud Sync'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {isBn ? 'রিয়েলটাইম ডাটা সিঙ্ক ও ব্যাকআপ কনফিগারেশন' : 'Realtime database URL and synchronization'}
+                </p>
               </button>
             </div>
           </div>
